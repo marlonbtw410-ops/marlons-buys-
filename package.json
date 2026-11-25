@@ -1,0 +1,28 @@
+{
+  "name": "lead-crm",
+  "version": "1.0.0",
+  "description": "Email-only CRM for wholesale real estate leads",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "dev": "DRY_RUN=1 node --no-warnings src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marlonbtw410-ops/marlons-buys-.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/marlonbtw410-ops/marlons-buys-/issues"
+  },
+  "homepage": "https://github.com/marlonbtw410-ops/marlons-buys-#readme",
+  "dependencies": {
+    "csv-parse": "^7.0.3",
+    "express": "^5.3.0",
+    "imapflow": "^2.12.2",
+    "nodemailer": "^10.6.1"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
