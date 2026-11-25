@@ -2,7 +2,7 @@
 const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 const { db, getSetting } = require('./db');
-const { decrypt, sign, render } = require('./util');
+const { decrypt, sign, render, bannedWords } = require('./util');
 
 const DRY_RUN = process.env.DRY_RUN === '1';
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -112,6 +112,13 @@ async function sendTick() {
         const subject = tpl.subject.trim() ? render(tpl.subject, vars)
           : (e.last_subject ? (/^re:/i.test(e.last_subject) ? e.last_subject : 'Re: ' + e.last_subject) : render('Following up', vars));
         const body = render(tpl.body, vars);
+        const banned = bannedWords(subject + '\n' + body);
+        if (banned.length) {
+          // Never send: pause the campaign so the owner fixes the template.
+          db.prepare("UPDATE campaigns SET status = 'paused' WHERE id = ?").run(c.id);
+          log(`BLOCKED "${c.name}": template "${tpl.name}" contains banned seller wording (${banned.join(', ')}). Campaign paused.`);
+          break;
+        }
         nextAllowed.set(inbox.id, Date.now() + gapMs());
         try {
           const msgId = await sendEmail({ inbox, lead, subject, body, inReplyTo: e.last_message_id });

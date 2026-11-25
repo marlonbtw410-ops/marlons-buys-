@@ -2,7 +2,7 @@ require('./env');
 const express = require('express');
 const { parse } = require('csv-parse/sync');
 const { db, getSetting, setSetting } = require('./db');
-const { encrypt, sign, safeEqual, esc, EMAIL_RE, PROVIDERS, render } = require('./util');
+const { encrypt, sign, safeEqual, esc, EMAIL_RE, PROVIDERS, render, bannedWords } = require('./util');
 const { layout, bare, options, STATUSES, statusLabel } = require('./views');
 const engine = require('./engine');
 
@@ -359,6 +359,7 @@ app.post('/inboxes/:id/delete', (req, res) => { db.prepare('DELETE FROM inboxes 
 const MERGE_HELP = `<p class="muted">Merge fields: <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{address}}</code> <code>{{city}}</code> <code>{{state}}</code> <code>{{zip}}</code>
   <code>{{my_name}}</code> <code>{{my_phone}}</code> <code>{{my_company}}</code>. Add a fallback with a bar: <code>{{first_name|there}}</code>.<br>
   Vary wording so every email is a little different (helps avoid spam filters): <code>{Hi|Hey|Hello}</code> picks one at random.<br>
+  <b>Never</b> mention wholesaling or assignment - emails with that wording are blocked.<br>
   Leave the subject <b>blank</b> on follow-ups to reply in the same thread ("Re: ..."). An unsubscribe line + your mailing address are added automatically.</p>`;
 
 app.get('/templates', (req, res) => {
@@ -377,7 +378,11 @@ function templateForm(t, action) {
   <div class="actions"><button>Save</button></div></form>`;
 }
 
+const bannedMsg = w => `Not saved: sellers must never see "${w.join('", "')}". We present as a real estate buyer - no wholesale or assignment wording in emails.`;
+
 app.post('/templates/new', (req, res) => {
+  const w = bannedWords((req.body.subject || '') + ' ' + (req.body.body || ''));
+  if (w.length) return back(res, '/templates', bannedMsg(w));
   const r = db.prepare('INSERT INTO templates(name, subject, body) VALUES(?, ?, ?)').run(req.body.name || 'Untitled', req.body.subject || '', req.body.body || '');
   res.redirect('/templates/' + r.lastInsertRowid);
 });
@@ -395,6 +400,8 @@ app.get('/templates/:id', (req, res) => {
 });
 
 app.post('/templates/:id', (req, res) => {
+  const w = bannedWords((req.body.subject || '') + ' ' + (req.body.body || ''));
+  if (w.length) return back(res, '/templates/' + req.params.id, bannedMsg(w));
   db.prepare('UPDATE templates SET name = ?, subject = ?, body = ? WHERE id = ?').run(req.body.name, req.body.subject || '', req.body.body || '', int(req.params.id));
   back(res, '/templates/' + req.params.id, 'Saved.');
 });

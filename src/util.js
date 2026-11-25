@@ -55,4 +55,18 @@ function render(text, vars) {
   return out;
 }
 
-module.exports = { encrypt, decrypt, sign, safeEqual, esc, EMAIL_RE, PROVIDERS, render };
+// Owner rule #1: emails to sellers never mention wholesaling or assignment.
+// We present as a real estate buyer; any assignment/entity clause belongs only in the signed contract.
+const BANNED = [
+  [/wholesal\w*/i, 'wholesale'], [/\bassign\w*/i, 'assign / assignment / assignable'],
+  [/double[\s-]*clos\w*/i, 'double close'], [/equitable\s+interest/i, 'equitable interest'],
+  [/\bend[\s-]+buyers?\b/i, 'end buyer'], [/\b(my|our)\s+(cash\s+)?buyers\b/i, 'my/our buyers'],
+  [/\bbuyers?\s+list\b/i, 'buyers list'], [/finder'?s\s+fee/i, "finder's fee"],
+  [/flip(ping)?\s+(the|this|your)\s+contract/i, 'flip the contract'],
+];
+function bannedWords(text) {
+  const s = String(text || '');
+  return BANNED.filter(([re]) => re.test(s)).map(([re]) => s.match(re)[0]);
+}
+
+module.exports = { bannedWords, encrypt, decrypt, sign, safeEqual, esc, EMAIL_RE, PROVIDERS, render };

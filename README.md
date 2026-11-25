@@ -7,6 +7,7 @@ An email-only CRM (no calls, no texts). Import seller lists, email the owners au
 - **Imports skip-traced lists** (CSV from PropStream, DealMachine, BatchLeads, REISift, county lists). Columns are matched automatically and duplicates are skipped.
 - **Sends from several inboxes** and rotates between them, with a daily limit and warm-up on each one so they stay out of spam.
 - **Runs follow-up sequences.** For example: first email, a follow-up 3 days later, a final one after 7 more days. Follow-ups reply in the same email thread.
+- **Never mentions wholesaling.** A template with wording like "wholesale", "assignable" or "end buyer" can't be saved, and a campaign that would send one pauses itself.
 - **Every email is a little different.** `{{first_name}}` and `{{address}}` fill in, and `{Hi|Hey|Hello}` picks a random word.
 - **Tracks replies.** It checks your inboxes every 5 minutes, marks leads as *replied* and stops their follow-ups. A reply like "stop" or "remove me" unsubscribes the lead automatically.
 - **Handles bounces and unsubscribes.** Bad addresses are flagged. An unsubscribe link and your mailing address are added to every email (required by CAN-SPAM).
