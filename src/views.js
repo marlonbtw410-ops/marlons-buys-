@@ -1,7 +1,7 @@
 const { esc } = require('./util');
 
-const STATUSES = ['new', 'contacted', 'replied', 'interested', 'appointment', 'under_contract', 'closed', 'dead'];
-const statusLabel = s => s.replace('_', ' ');
+const STATUSES = ['new', 'contacted', 'replied', 'interested', 'offer_due', 'appointment', 'under_contract', 'closed', 'dead'];
+const statusLabel = s => String(s).replace(/_/g, ' ');
 
 const CSS = `
 :root{--bg:#f5f6f8;--card:#fff;--ink:#1d2330;--muted:#6b7280;--line:#e3e6eb;--brand:#0f766e;--brand-ink:#fff;--warn:#b45309;--bad:#b91c1c}
@@ -25,12 +25,12 @@ button,.btn{font:inherit;background:var(--brand);color:var(--brand-ink);border:0
 pre{white-space:pre-wrap;font:inherit;margin:0}.msg{border-left:3px solid var(--line);padding:6px 12px;margin:10px 0}.msg.in{border-color:var(--brand)}
 `;
 
-function layout(title, body, { active = '', flash = '' } = {}) {
-  const links = [['/', 'Dashboard'], ['/leads', 'Leads'], ['/import', 'Import'], ['/campaigns', 'Campaigns'],
+function layout(title, body, { active = '', flash = '', pending = 0 } = {}) {
+  const links = [['/', 'Dashboard'], ['/approvals', 'Approvals'], ['/leads', 'Leads'], ['/import', 'Import'], ['/campaigns', 'Campaigns'],
     ['/templates', 'Templates'], ['/inboxes', 'Inboxes'], ['/settings', 'Settings']];
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} - Lead CRM</title><style>${CSS}</style></head><body>
-<nav><b>Lead CRM</b>${links.map(([h, t]) => `<a href="${h}" class="${active === h ? 'on' : ''}">${t}</a>`).join('')}
+<nav><b>Lead CRM</b>${links.map(([h, t]) => `<a href="${h}" class="${active === h ? 'on' : ''}">${t}${h === '/approvals' && pending ? ` <span class="pill" style="background:var(--brand);color:var(--brand-ink);border:0">${pending}</span>` : ''}</a>`).join('')}
 <form method="post" action="/logout" class="inline" style="margin-left:auto"><button class="btn2">Log out</button></form></nav>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ''}${body}</main></body></html>`;
 }

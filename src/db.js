@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 `);
 
+{ // Approval drafts + columns added after the first release
+  db.exec(`CREATE TABLE IF NOT EXISTS drafts (
+    id INTEGER PRIMARY KEY,
+    lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
+    inbox_id INTEGER, in_reply_to TEXT,
+    subject TEXT, body TEXT, reason TEXT,
+    status TEXT DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')), sent_at TEXT
+  )`);
+  // Columns added after the first release.
+  const cols = db.prepare('PRAGMA table_info(leads)').all().map(c => c.name);
+  if (!cols.includes('facts')) db.exec("ALTER TABLE leads ADD COLUMN facts TEXT DEFAULT '{}'");
+  if (!cols.includes('auto_info_requests')) db.exec('ALTER TABLE leads ADD COLUMN auto_info_requests INTEGER DEFAULT 0');
+  if (!cols.includes('offer_due_at')) db.exec('ALTER TABLE leads ADD COLUMN offer_due_at TEXT');
+}
+
 function getSetting(key, fallback = '') {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
   return row ? row.value : fallback;

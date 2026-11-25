@@ -3,6 +3,7 @@ const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 const { db, getSetting } = require('./db');
 const { decrypt, sign, render, bannedWords } = require('./util');
+const replies = require('./replies');
 
 const DRY_RUN = process.env.DRY_RUN === '1';
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -150,14 +151,6 @@ async function sendTick() {
   finally { sending = false; }
 }
 
-const STOP_RE = /\b(unsubscribe|stop|remove me|take me off|do not (contact|email)|don'?t (contact|email)|not interested)\b/i;
-
-function bodyFromSource(src) {
-  const s = src.toString('utf8');
-  const i = s.search(/\r?\n\r?\n/);
-  return (i >= 0 ? s.slice(i) : s).replace(/<[^>]+>/g, ' ').replace(/=\r?\n/g, '').replace(/\s+/g, ' ').trim();
-}
-
 let checking = false;
 async function checkReplies() {
   if (checking || DRY_RUN) return;
@@ -196,17 +189,12 @@ async function checkReplies() {
             }
             const lead = db.prepare('SELECT * FROM leads WHERE email = ?').get(from);
             if (!lead) continue;
-            const full = await client.fetchOne(m.uid, { source: { maxLength: 20000 } }, { uid: true });
-            const body = full?.source ? bodyFromSource(full.source).slice(0, 2000) : '';
-            db.prepare(`INSERT OR IGNORE INTO messages(lead_id, inbox_id, direction, subject, body, message_id, sent_at)
-              VALUES(?, ?, 'in', ?, ?, ?, datetime(?))`)
-              .run(lead.id, inbox.id, m.envelope.subject || '', body, msgId, (m.envelope.date || new Date()).toISOString());
-            const optOut = STOP_RE.test(body.slice(0, 400));
-            db.prepare(`UPDATE leads SET replied_at = datetime('now'), unsubscribed = CASE WHEN ? THEN 1 ELSE unsubscribed END,
-              status = CASE WHEN ? THEN 'dead' WHEN status IN ('new','contacted') THEN 'replied' ELSE status END WHERE id = ?`)
-              .run(optOut ? 1 : 0, optOut ? 1 : 0, lead.id);
-            db.prepare("UPDATE enrollments SET status = 'replied' WHERE lead_id = ? AND status = 'active'").run(lead.id);
-            log(`reply from ${from}${optOut ? ' (opt-out)' : ''}`);
+            const full = await client.fetchOne(m.uid, { source: { maxLength: 200000 } }, { uid: true });
+            if (!full?.source) continue;
+            const parsed = await replies.parseEmail(full.source);
+            const outcome = await replies.handleIncoming({ lead, inbox, subject: parsed.subject || m.envelope.subject || '',
+              text: parsed.text, messageId: msgId, date: m.envelope.date });
+            log(`reply from ${from}: ${outcome}`);
           }
         } finally { lock.release(); }
         await client.logout();

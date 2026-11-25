@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node --no-warnings src/server.js",
-    "dev": "DRY_RUN=1 node --no-warnings src/server.js"
+    "dev": "DRY_RUN=1 node --no-warnings src/server.js",
+    "test": "node --no-warnings --test test/*.test.js"
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,7 @@
     "csv-parse": "^7.0.3",
     "express": "^5.3.0",
     "imapflow": "^2.12.2",
+    "mailparser": "^3.15.0",
     "nodemailer": "^10.6.1"
   },
   "engines": {

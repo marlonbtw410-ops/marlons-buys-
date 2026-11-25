@@ -5,6 +5,7 @@ const { db, getSetting, setSetting } = require('./db');
 const { encrypt, sign, safeEqual, esc, EMAIL_RE, PROVIDERS, render, bannedWords } = require('./util');
 const { layout, bare, options, STATUSES, statusLabel } = require('./views');
 const engine = require('./engine');
+const replies = require('./replies');
 
 const app = express();
 app.disable('x-powered-by');
@@ -15,7 +16,8 @@ const APP_PASSWORD = process.env.APP_PASSWORD || '';
 const AUTH_TOKEN = sign('admin:' + APP_PASSWORD);
 const cookie = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(p => p[0]));
 const back = (res, url, msg) => res.redirect(url + (msg ? (url.includes('?') ? '&' : '?') + 'msg=' + encodeURIComponent(msg) : ''));
-const page = (req, res, title, body, active) => res.send(layout(title, body, { active, flash: req.query.msg }));
+const pendingCount = () => db.prepare("SELECT COUNT(*) n FROM drafts WHERE status = 'pending'").get().n;
+const page = (req, res, title, body, active) => res.send(layout(title, body, { active, flash: req.query.msg, pending: pendingCount() }));
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const splitTags = s => String(s || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
 
@@ -116,7 +118,16 @@ app.get('/', (req, res) => {
   if (!total) setupTodo.push('<a href="/import">Import your first lead list</a>');
   if (!db.prepare("SELECT 1 FROM campaigns WHERE status='active'").get()) setupTodo.push('<a href="/campaigns">Create and start a campaign</a>');
 
+  const waiting = pendingCount();
+  const offersDue = db.prepare("SELECT * FROM leads WHERE status = 'offer_due' ORDER BY offer_due_at").all();
+  const today = new Date().toISOString().slice(0, 10);
   page(req, res, 'Dashboard', `<h1>Dashboard</h1>
+  ${waiting ? `<div class="card" style="border-left:4px solid var(--brand)"><h2>${waiting} repl${waiting === 1 ? 'y needs' : 'ies need'} your OK</h2>
+    <p>Sellers asked questions. A reply is drafted for each one. <a class="btn" href="/approvals">Review &amp; send</a></p></div>` : ''}
+  <div class="card"><h2>Offers you owe</h2>${offersDue.length ? `<table><tr><th>Seller</th><th>Property</th><th>Promised by</th></tr>
+    ${offersDue.map(l => `<tr><td><a href="/leads/${l.id}">${esc(l.first_name)} ${esc(l.last_name)}</a></td><td>${esc(l.address)}</td>
+    <td class="${l.offer_due_at && l.offer_due_at < today ? 'err' : l.offer_due_at === today ? 'warn' : ''}">${esc(l.offer_due_at || '-')}${l.offer_due_at && l.offer_due_at < today ? ' (late)' : ''}</td></tr>`).join('')}</table>`
+    : '<p class="muted">None right now. When a seller gives you everything, they show up here with the date you promised.</p>'}</div>
   ${setupTodo.length ? `<div class="card"><h2>Getting started</h2><ol>${setupTodo.map(t => `<li>${t}</li>`).join('')}</ol></div>` : ''}
   <div class="grid">
     <div class="stat"><div>${sentToday} / ${capacity}</div><span>Sent today / daily capacity</span></div>
@@ -195,6 +206,9 @@ app.get('/leads/:id', (req, res) => {
   const enr = db.prepare('SELECT e.*, c.name FROM enrollments e JOIN campaigns c ON c.id = e.campaign_id WHERE lead_id = ?').all(l.id);
   page(req, res, 'Lead', `<h1>${esc(l.first_name)} ${esc(l.last_name)} <span class="pill">${statusLabel(l.status)}</span></h1>
   <p class="muted">${esc(l.email)} ${l.unsubscribed ? '- <b class="warn">unsubscribed</b>' : ''} ${l.bounced ? '- <b class="err">bounced</b>' : ''}</p>
+  <div class="card"><h2>What we know</h2>${(() => { const f = replies.leadFacts(l); return `<table>${replies.FACT_KEYS.map(k =>
+    `<tr><td style="width:180px">${replies.FACTS[k].label}</td><td>${f[k] ? esc(f[k]) : '<span class="warn">missing</span>'}</td></tr>`).join('')}</table>`; })()}
+    ${l.offer_due_at ? `<p>Offer promised by <b>${esc(l.offer_due_at)}</b>.</p>` : ''}</div>
   <div class="card"><h2>Conversation</h2>${msgs.map(m => `<div class="msg ${m.direction}"><div class="muted">${m.direction === 'in' ? 'They replied' : 'You sent'} - ${esc(m.sent_at)}${m.inbox ? ' - ' + esc(m.inbox) : ''}</div>
     <b>${esc(m.subject)}</b><pre>${esc(m.body)}</pre></div>`).join('') || '<p class="muted">No emails yet.</p>'}
     <p class="muted">To reply, answer from your normal email app - it lands in the same thread.</p></div>
@@ -532,6 +546,53 @@ app.post('/campaigns/:id/enroll', (req, res) => {
 });
 app.post('/campaigns/:id/delete', (req, res) => { db.prepare('DELETE FROM campaigns WHERE id = ?').run(int(req.params.id)); back(res, '/campaigns', 'Deleted.'); });
 
+// ---------- Approvals: replies that need the owner's OK ----------
+
+app.get('/approvals', (req, res) => {
+  const rows = db.prepare(`SELECT d.*, l.first_name, l.last_name, l.email, l.address, l.facts, i.email AS inbox_email FROM drafts d
+    JOIN leads l ON l.id = d.lead_id LEFT JOIN inboxes i ON i.id = d.inbox_id WHERE d.status = 'pending' ORDER BY d.created_at`).all();
+  page(req, res, 'Approvals', `<h1>Needs your OK <span class="muted">(${rows.length})</span></h1>
+  <p class="muted">These sellers asked questions or said something that needs a human. Nothing here sends until you click <b>Approve &amp; send</b>.
+  Routine emails (asking for missing info, and "thank you, your offer is coming") send on their own.</p>
+  ${rows.map(d => {
+    const last = db.prepare("SELECT body, sent_at FROM messages WHERE lead_id = ? AND direction = 'in' ORDER BY sent_at DESC LIMIT 1").get(d.lead_id);
+    return `<div class="card"><h2><a href="/leads/${d.lead_id}">${esc(d.first_name)} ${esc(d.last_name)}</a> <span class="muted">- ${esc(d.address)}</span></h2>
+    <p class="warn">${esc(d.reason)}</p>
+    <div class="msg in"><div class="muted">They wrote${last ? ' - ' + esc(last.sent_at) : ''}</div><pre>${esc(last?.body || '')}</pre></div>
+    <form method="post" action="/approvals/${d.id}/send">
+      <label>Subject</label><input name="subject" value="${esc(d.subject)}">
+      <label>Your reply (edit anything; fill in any [BRACKETS])</label><textarea name="body" style="min-height:220px">${esc(d.body)}</textarea>
+      <p class="muted">Sends from ${esc(d.inbox_email || 'your inbox')} in the same email thread.</p>
+      <div class="actions"><button>Approve &amp; send</button>
+      <button formaction="/approvals/${d.id}/discard" class="btn2">Discard (I'll handle it myself)</button></div></form></div>`;
+  }).join('') || '<div class="card"><p class="muted">Nothing waiting. You\'re all caught up.</p></div>'}`, '/approvals');
+});
+
+app.post('/approvals/:id/send', async (req, res) => {
+  const d = db.prepare("SELECT * FROM drafts WHERE id = ? AND status = 'pending'").get(int(req.params.id));
+  if (!d) return back(res, '/approvals', 'That draft was already handled.');
+  const subject = String(req.body.subject || d.subject).trim(), body = String(req.body.body || '').trim();
+  if (/\[[A-Z][A-Z ]+\]/.test(body)) return back(res, '/approvals', 'Fill in or delete the [BRACKETED] parts before sending.');
+  const w = bannedWords(subject + ' ' + body);
+  if (w.length) return back(res, '/approvals', bannedMsg(w));
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(d.lead_id);
+  const inbox = db.prepare('SELECT * FROM inboxes WHERE id = ?').get(d.inbox_id)
+    || db.prepare('SELECT * FROM inboxes WHERE active = 1 ORDER BY id LIMIT 1').get();
+  if (!lead || !inbox) return back(res, '/approvals', 'Lead or inbox no longer exists.');
+  if (lead.unsubscribed) return back(res, '/approvals', 'This lead unsubscribed. Not sent.');
+  try {
+    const msgId = await engine.sendEmail({ inbox, lead, subject, body, inReplyTo: d.in_reply_to });
+    db.prepare("INSERT INTO messages(lead_id, inbox_id, direction, subject, body, message_id) VALUES(?, ?, 'out', ?, ?, ?)").run(lead.id, inbox.id, subject, body, msgId);
+    db.prepare("UPDATE drafts SET status = 'sent', subject = ?, body = ?, sent_at = datetime('now') WHERE id = ?").run(subject, body, d.id);
+    back(res, '/approvals', `Sent to ${lead.email}.`);
+  } catch (e) { back(res, '/approvals', 'Send failed: ' + e.message); }
+});
+
+app.post('/approvals/:id/discard', (req, res) => {
+  db.prepare("UPDATE drafts SET status = 'discarded' WHERE id = ?").run(int(req.params.id));
+  back(res, '/approvals', 'Discarded. Nothing was sent.');
+});
+
 // ---------- Settings ----------
 
 const SETTINGS = [
@@ -541,6 +602,9 @@ const SETTINGS = [
   ['my_phone', 'Your phone (for {{my_phone}})', ''],
   ['min_gap_sec', 'Minimum seconds between emails from the same inbox', '120'],
   ['max_gap_sec', 'Maximum seconds between emails from the same inbox', '360'],
+  ['offer_days', 'When a seller gives everything, promise an offer within this many days', '5'],
+  ['auto_offer_ack', 'Auto-send the "thank you, offer coming" email? (1 = yes, 0 = ask me first)', '1'],
+  ['auto_info_request', 'Auto-send one email asking for missing info? (1 = yes, 0 = ask me first)', '1'],
   ['sell_headline', 'Seller form headline', 'Sell your house fast, as-is, for cash'],
   ['sell_subtext', 'Seller form text', ''],
 ];
@@ -548,7 +612,7 @@ const SETTINGS = [
 app.get('/settings', (req, res) => {
   const pub = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
   page(req, res, 'Settings', `<h1>Settings</h1><div class="card"><form method="post" action="/settings">
-  ${SETTINGS.map(([k, label, ph]) => `<label>${label}</label><input name="${k}" value="${esc(getSetting(k, ['min_gap_sec', 'max_gap_sec'].includes(k) ? ph : ''))}" placeholder="${esc(ph)}">`).join('')}
+  ${SETTINGS.map(([k, label, ph]) => `<label>${label}</label><input name="${k}" value="${esc(getSetting(k, ['min_gap_sec', 'max_gap_sec', 'offer_days', 'auto_offer_ack', 'auto_info_request'].includes(k) ? ph : ''))}" placeholder="${esc(ph)}">`).join('')}
   <div class="actions"><button>Save</button></div></form></div>
   <div class="card"><h2>Your seller lead form</h2><p>Share this link anywhere (Facebook, Instagram bio, Craigslist, flyers, a QR code on bandit signs).
   Every submission appears in Leads as <b>interested</b> with the tag <b>inbound</b>.</p>

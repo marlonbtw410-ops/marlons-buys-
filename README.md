@@ -9,7 +9,11 @@ An email-only CRM (no calls, no texts). Import seller lists, email the owners au
 - **Runs follow-up sequences.** For example: first email, a follow-up 3 days later, a final one after 7 more days. Follow-ups reply in the same email thread.
 - **Never mentions wholesaling.** A template with wording like "wholesale", "assignable" or "end buyer" can't be saved, and a campaign that would send one pauses itself.
 - **Every email is a little different.** `{{first_name}}` and `{{address}}` fill in, and `{Hi|Hey|Hello}` picks a random word.
-- **Tracks replies.** It checks your inboxes every 5 minutes, marks leads as *replied* and stops their follow-ups. A reply like "stop" or "remove me" unsubscribes the lead automatically.
+- **Handles replies on its own, and only brings you the ones that need you.** It checks your inboxes every 5 minutes, stops follow-ups once a seller replies, and keeps track of what you know about each property (price, timeline, condition, occupancy, reason for selling):
+  - **Seller gave everything:** sends "Thank you, you'll have an offer from me by [date]" automatically and moves the lead to *Offer due*. It never sends a price; the offer comes from you.
+  - **Some info missing:** sends one email asking only for the missing pieces.
+  - **Seller asked a question, or mentioned an agent, lawyer or listing:** drafts a reply and holds it on the **Approvals** page until you edit it and click *Approve & send*.
+  - **"Stop", "remove me" or "not interested":** unsubscribes them. Out-of-office replies are ignored.
 - **Handles bounces and unsubscribes.** Bad addresses are flagged. An unsubscribe link and your mailing address are added to every email (required by CAN-SPAM).
 - **Pipeline:** new → contacted → replied → interested → appointment → under contract → closed / dead.
 - **Seller lead form at `/sell`.** Share it on Facebook, Craigslist, flyers or a QR code on signs. Submissions show up as *interested* leads.
@@ -31,7 +35,7 @@ An email-only CRM (no calls, no texts). Import seller lists, email the owners au
    ```
    Then open http://localhost:3000.
 
-To try it without sending real email, run `npm run dev`. Emails are printed in the terminal instead of being sent.
+Run the tests with `npm test`. To try it without sending real email, run `npm run dev`. Emails are printed in the terminal instead of being sent.
 
 ## Connecting inboxes
 
