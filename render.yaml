@@ -1,0 +1,25 @@
+# One-click setup on Render (render.com): New + > Blueprint > pick this repo and branch.
+# Render asks for APP_PASSWORD (the password you'll use to log into the CRM).
+services:
+  - type: web
+    name: cypher-lead-crm
+    runtime: node
+    plan: starter            # needed for the disk below; free plans lose data on restart
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: APP_PASSWORD
+        sync: false          # you type this in during setup
+      - key: SECRET_KEY
+        generateValue: true  # random key that encrypts your inbox passwords
+      - key: DB_PATH
+        value: /var/data/crm.db
+      - key: TZ
+        value: America/New_York
+    disk:
+      name: crm-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -610,7 +610,7 @@ const SETTINGS = [
 ];
 
 app.get('/settings', (req, res) => {
-  const pub = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const pub = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000').replace(/\/$/, '');
   page(req, res, 'Settings', `<h1>Settings</h1><div class="card"><form method="post" action="/settings">
   ${SETTINGS.map(([k, label, ph]) => `<label>${label}</label><input name="${k}" value="${esc(getSetting(k, ['min_gap_sec', 'max_gap_sec', 'offer_days', 'auto_offer_ack', 'auto_info_request'].includes(k) ? ph : ''))}" placeholder="${esc(ph)}">`).join('')}
   <div class="actions"><button>Save</button></div></form></div>

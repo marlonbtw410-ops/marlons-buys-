@@ -6,7 +6,7 @@ const { decrypt, sign, render, bannedWords } = require('./util');
 const replies = require('./replies');
 
 const DRY_RUN = process.env.DRY_RUN === '1';
-const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:3000').replace(/\/$/, '');
+const PUBLIC_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000').replace(/\/$/, '');
 const nextAllowed = new Map(); // inbox id -> timestamp (ms) when it may send again
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
